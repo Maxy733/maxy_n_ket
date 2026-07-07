@@ -13,14 +13,10 @@ import {
   MessageSquare, 
   Sparkles, 
   Music, 
-  Play, 
-  Pause, 
-  SkipForward, 
-  SkipBack, 
   ChevronUp, 
   X, 
   Smile,
-  Volume2
+  ExternalLink
 } from 'lucide-react';
 
 import { GalleryItem, BucketItem, LoveMessage, Coupon, WallpaperOption } from './types';
@@ -38,13 +34,59 @@ import BucketList from './components/BucketList';
 import LoveJar from './components/LoveJar';
 import SparkGame from './components/SparkGame';
 
-// Sweet couple songs for our custom player
-const COUPLE_SONGS = [
-  { title: "Perfect", artist: "Ed Sheeran", lyrics: "I found a love for me... Darling, just dive right in..." },
-  { title: "Yellow", artist: "Coldplay", lyrics: "Look at the stars, look how they shine for you..." },
-  { title: "Lover", artist: "Taylor Swift", lyrics: "Can I go where you go? Can we always be this close?" },
-  { title: "La Vie En Rose", artist: "Emily Watts", lyrics: "When you press me to your heart, I'm in a world apart..." }
-];
+const SPOTIFY_PLAYLIST_STORAGE_KEY = 'maxy_ket_spotify_playlist_url';
+
+const getSpotifyEmbedUrl = (value: string) => {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) return '';
+
+  if (trimmedValue.includes('open.spotify.com/embed/')) {
+    return trimmedValue;
+  }
+
+  try {
+    const parsedUrl = new URL(trimmedValue);
+    if (parsedUrl.hostname.includes('open.spotify.com')) {
+      const parts = parsedUrl.pathname.split('/').filter(Boolean);
+      if (parts.length >= 2) {
+        const [resourceType, resourceId] = parts;
+        return `https://open.spotify.com/embed/${resourceType}/${resourceId}?utm_source=generator`;
+      }
+    }
+  } catch {
+    const spotifyUriMatch = trimmedValue.match(/^spotify:(playlist|track|album):([A-Za-z0-9]+)$/i);
+    if (spotifyUriMatch) {
+      const [, resourceType, resourceId] = spotifyUriMatch;
+      return `https://open.spotify.com/embed/${resourceType.toLowerCase()}/${resourceId}?utm_source=generator`;
+    }
+  }
+
+  return '';
+};
+
+const getSpotifyOpenUrl = (value: string) => {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) return '';
+
+  if (trimmedValue.includes('open.spotify.com/embed/')) {
+    return trimmedValue.replace('/embed/', '/');
+  }
+
+  try {
+    const parsedUrl = new URL(trimmedValue);
+    if (parsedUrl.hostname.includes('open.spotify.com')) {
+      return trimmedValue;
+    }
+  } catch {
+    const spotifyUriMatch = trimmedValue.match(/^spotify:(playlist|track|album):([A-Za-z0-9]+)$/i);
+    if (spotifyUriMatch) {
+      const [, resourceType, resourceId] = spotifyUriMatch;
+      return `https://open.spotify.com/${resourceType.toLowerCase()}/${resourceId}`;
+    }
+  }
+
+  return '';
+};
 
 export default function App() {
   // --- Persistent States from LocalStorage ---
@@ -129,12 +171,13 @@ export default function App() {
     return saved ? parseInt(saved, 10) : 350; // default initial points
   });
 
+  const [spotifyPlaylistUrl, setSpotifyPlaylistUrl] = useState<string>(() => {
+    return localStorage.getItem(SPOTIFY_PLAYLIST_STORAGE_KEY) || '';
+  });
+
   // --- UI Layout states ---
   const [activeAnchor, setActiveAnchor] = useState('home-section');
   const [showMusicPlayer, setShowMusicPlayer] = useState(false);
-  const [currentSongIdx, setCurrentSongIdx] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [lyricTimer, setLyricTimer] = useState(0);
 
   // Syncing states to LocalStorage safely
   useEffect(() => {
@@ -209,6 +252,14 @@ export default function App() {
     }
   }, [lovePoints]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(SPOTIFY_PLAYLIST_STORAGE_KEY, spotifyPlaylistUrl);
+    } catch (err) {
+      console.warn('Failed to save spotifyPlaylistUrl to localStorage:', err);
+    }
+  }, [spotifyPlaylistUrl]);
+
   // Handle active navigation highlighting on scroll
   useEffect(() => {
     const sections = ['home-section', 'gallery-section', 'bucket-section', 'love-jar-section', 'game-section'];
@@ -232,17 +283,6 @@ export default function App() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Song player simulated progress / lyrics ticker
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    if (isPlaying) {
-      interval = setInterval(() => {
-        setLyricTimer((prev) => (prev + 1) % 100);
-      }, 500);
-    }
-    return () => clearInterval(interval);
-  }, [isPlaying]);
-
   // Points helpers
   const addLovePoints = (pts: number) => {
     setLovePoints((prev) => prev + pts);
@@ -262,18 +302,8 @@ export default function App() {
     }
   };
 
-  const nextSong = () => {
-    setCurrentSongIdx((prev) => (prev + 1) % COUPLE_SONGS.length);
-    setLyricTimer(0);
-  };
-
-  const prevSong = () => {
-    setCurrentSongIdx((prev) => (prev - 1 + COUPLE_SONGS.length) % COUPLE_SONGS.length);
-    setLyricTimer(0);
-  };
-
   return (
-    <div className="relative min-h-screen bg-[#FFF9F5] text-[#3D2B1F] font-sans selection:bg-rose-100 selection:text-rose-700 overflow-x-hidden">
+    <div className="relative flex min-h-screen flex-col bg-[#FFF9F5] text-[#3D2B1F] font-sans selection:bg-rose-100 selection:text-rose-700 overflow-x-hidden">
       
       {/* BACKGROUND DOT GRID PATTERN */}
       <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#3D2B1F 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }}></div>
@@ -325,7 +355,7 @@ export default function App() {
       </nav>
 
       {/* RENDER MASTER SECTIONS IN SINGLE-SCREEN FLOW */}
-      <main className="w-full">
+      <main className="flex-1 w-full">
         {/* Section 1: Home Wallpaper & Counter */}
         <HomeCounter 
           anniversaryDate={anniversaryDate}
@@ -376,7 +406,7 @@ export default function App() {
       </main>
 
       {/* FOOTER */}
-      <footer className="w-full py-12 bg-[#FFF9F5] border-t border-[#3D2B1F]/10 text-center text-xs text-[#3D2B1F]/60">
+      <footer className="mt-auto w-full py-12 bg-[#FFF9F5] border-t border-[#3D2B1F]/10 text-center text-xs text-[#3D2B1F]/60">
         <div className="max-w-4xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-1">
             <span>Made with forever love by</span>
@@ -402,7 +432,7 @@ export default function App() {
               className="w-12 h-12 sm:w-14 sm:h-14 bg-white text-rose-500 rounded-full flex items-center justify-center shadow-[0_8px_30px_rgba(61,43,31,0.08)] hover:scale-110 cursor-pointer transition-all border border-[#3D2B1F]/10"
               title="Open our song player"
             >
-              <Music className={`w-5 h-5 sm:w-6 sm:h-6 ${isPlaying ? 'animate-pulse' : ''}`} />
+              <Music className="w-5 h-5 sm:w-6 sm:h-6" />
             </motion.button>
           ) : (
             /* Expanded Glassmorphic Music Player */
@@ -410,7 +440,7 @@ export default function App() {
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="backdrop-blur-md bg-white/95 border border-[#3D2B1F]/10 rounded-3xl p-5 w-72 sm:w-80 shadow-[0_20px_50px_rgba(61,43,31,0.1)] relative text-[#3D2B1F]"
+              className="backdrop-blur-md bg-white/95 border border-[#3D2B1F]/10 rounded-3xl p-5 w-[92vw] max-w-sm sm:max-w-md shadow-[0_20px_50px_rgba(61,43,31,0.1)] relative text-[#3D2B1F]"
             >
               {/* Close Button */}
               <button 
@@ -421,70 +451,54 @@ export default function App() {
               </button>
 
               {/* Title Header */}
-              <div className="flex items-center gap-2 mb-4">
+              <div className="flex items-center gap-2 mb-3 pr-7">
                 <Music className="w-4 h-4 text-rose-500" />
-                <span className="text-[10px] font-bold tracking-widest uppercase text-rose-500">Our Shared Playlist</span>
+                <span className="text-[10px] font-bold tracking-widest uppercase text-rose-500">Our Shared Spotify Playlist</span>
               </div>
 
-              {/* Disc Artwork & Song Details */}
-              <div className="flex items-center gap-4 mb-4">
-                {/* Simulated spinning record vinyl */}
-                <div className="relative">
-                  <div className={`w-14 h-14 rounded-full bg-gradient-to-tr from-[#3D2B1F] to-[#2A1D15] flex items-center justify-center border border-white/20 shadow-md ${isPlaying ? 'animate-spin' : ''}`} style={{ animationDuration: '8s' }}>
-                    <div className="w-5 h-5 rounded-full bg-rose-500 flex items-center justify-center text-white text-[9px] font-bold">
-                      ❤
-                    </div>
-                  </div>
-                  {isPlaying && (
-                    <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full animate-ping" />
-                  )}
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <h5 className="font-serif text-sm font-bold text-[#2A1D15] truncate">{COUPLE_SONGS[currentSongIdx].title}</h5>
-                  <p className="text-[#3D2B1F]/60 text-xs truncate">{COUPLE_SONGS[currentSongIdx].artist}</p>
-                </div>
-              </div>
-
-              {/* Simulated Lyrics ticker */}
-              <div className="bg-[#FFF9F5] border border-[#3D2B1F]/10 rounded-xl p-2.5 mb-4 min-h-[44px] flex items-center justify-center text-center">
-                <p className="text-[#3D2B1F]/80 text-xs font-light italic">
-                  {isPlaying 
-                    ? COUPLE_SONGS[currentSongIdx].lyrics 
-                    : "Music makes love grow. Press Play to listen..."}
+              <div className="bg-[#FFF9F5] border border-[#3D2B1F]/10 rounded-2xl p-3 mb-3">
+                <p className="text-[#3D2B1F]/70 text-xs leading-5">
+                  Paste your shared Spotify playlist link below. The card will convert it into an embedded player.
                 </p>
+                <input
+                  type="url"
+                  value={spotifyPlaylistUrl}
+                  onChange={(event) => setSpotifyPlaylistUrl(event.target.value)}
+                  placeholder="https://open.spotify.com/playlist/..."
+                  className="mt-3 w-full rounded-xl border border-[#3D2B1F]/10 bg-white px-3 py-2 text-sm text-[#3D2B1F] placeholder:text-[#3D2B1F]/35 outline-none focus:border-rose-300 focus:ring-2 focus:ring-rose-100"
+                />
               </div>
 
-              {/* Controls */}
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-1 text-[#3D2B1F]/50 text-xs font-medium">
-                  <Volume2 className="w-3.5 h-3.5 text-rose-500/70" />
-                  <span>Simulated</span>
+              {getSpotifyEmbedUrl(spotifyPlaylistUrl) ? (
+                <div className="overflow-hidden rounded-2xl border border-[#3D2B1F]/10 bg-black/5 shadow-inner">
+                  <iframe
+                    title="Our shared Spotify playlist"
+                    src={getSpotifyEmbedUrl(spotifyPlaylistUrl)}
+                    width="100%"
+                    height="352"
+                    allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                    loading="lazy"
+                    className="block"
+                  />
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <button 
-                    onClick={prevSong}
-                    className="p-2 text-[#3D2B1F]/50 hover:text-[#3D2B1F] hover:bg-[#3D2B1F]/5 rounded-lg cursor-pointer transition-colors"
-                  >
-                    <SkipBack className="w-4 h-4" />
-                  </button>
-
-                  <button 
-                    onClick={() => setIsPlaying(!isPlaying)}
-                    className="p-2.5 bg-rose-500 hover:bg-rose-400 text-white rounded-full cursor-pointer transition-all shadow-md active:scale-95"
-                  >
-                    {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-white" />}
-                  </button>
-
-                  <button 
-                    onClick={nextSong}
-                    className="p-2 text-[#3D2B1F]/50 hover:text-[#3D2B1F] hover:bg-[#3D2B1F]/5 rounded-lg cursor-pointer transition-colors"
-                  >
-                    <SkipForward className="w-4 h-4" />
-                  </button>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-[#3D2B1F]/15 bg-[#FFF9F5] px-4 py-8 text-center">
+                  <p className="text-sm font-medium text-[#3D2B1F]">No playlist loaded yet.</p>
+                  <p className="mt-1 text-xs text-[#3D2B1F]/60">Add the Spotify shared playlist URL above to bring the player to life.</p>
                 </div>
-              </div>
+              )}
+
+              {getSpotifyOpenUrl(spotifyPlaylistUrl) && (
+                <a
+                  href={getSpotifyOpenUrl(spotifyPlaylistUrl)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-rose-500 hover:text-rose-400"
+                >
+                  Open in Spotify
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
