@@ -1,0 +1,6 @@
+{
+  "name": "Maxy & Ket",
+  "description": "A beautiful, premium, and interactive counting days website for Maxy & Ket to celebrate their love journey, memories, bucket lists, and special milestones.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
