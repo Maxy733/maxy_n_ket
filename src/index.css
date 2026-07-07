@@ -11,6 +11,19 @@
   --color-charcoal: #2A1D15;
 }
 
+html,
+body,
+#root {
+  min-height: 100vh;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#root {
+  flex: 1;
+}
+
 body {
   background-color: #FFF9F5;
   color: #3D2B1F;
